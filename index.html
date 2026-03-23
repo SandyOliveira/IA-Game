@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Miriri Game 🐴</title>
+
+  <style>
+    body {
+      background: #e8f5e9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      height: 100vh;
+    }
+
+    canvas {
+      background: white;
+      border: 3px solid #4caf50;
+      width: 95vw;
+      max-width: 770px;
+      height: auto;
+      touch-action: none;
+    }
+
+    #score {
+      font-size: 30px;
+      font-family: Arial;
+      margin: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="score">Score: 0</div>
+  <canvas id="game" width="770" height="550"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const size = 55;
+    const scoreDisplay = document.getElementById("score");
+
+    const tileCountX = Math.floor(canvas.width / size);
+    const tileCountY = Math.floor(canvas.height / size);
+
+    let gameOver = false;
+    let score = 0;
+
+    let horse = {
+      x: 5 * size,
+      y: 5 * size,
+      dx: 0,
+      dy: 0
+    };
+
+    let apple = {
+      x: 2 * size,
+      y: 2 * size
+    };
+
+    let enemy = {
+      x: 8 * size,
+      y: 3 * size
+    };
+
+    const restartButton = {
+      x: canvas.width / 2 - 100,
+      y: canvas.height / 2 + 130,
+      width: 200,
+      height: 60
+    };
+
+    // SPRITES
+    const sprites = [];
+    for (let i = 0; i <= 4; i++) {
+      const img = new Image();
+      img.src = `assets/sprite_${i}.png`;
+      sprites.push(img);
+    }
+
+    let frame = 0;
+    let frameDelay = 0;
+    let direction = "right";
+
+    const appleImg = new Image();
+    appleImg.src = "assets/maza3.png";
+
+    // =========================
+    // FUNÇÕES DE POSIÇÃO
+    // =========================
+    function getGridPos(obj) {
+      return {
+        x: obj.x / size,
+        y: obj.y / size
+      };
+    }
+
+    function samePosition(a, b) {
+      return a.x === b.x && a.y === b.y;
+    }
+
+    function randomGridPosition() {
+      return {
+        x: Math.floor(Math.random() * tileCountX),
+        y: Math.floor(Math.random() * tileCountY)
+      };
+    }
+
+    // =========================
+    // POSICIONAMENTO SEGURO
+    // =========================
+    function placeEnemySafely() {
+      let newPos;
+
+      do {
+        newPos = randomGridPosition();
+      } while (
+        (newPos.x === horse.x / size && newPos.y === horse.y / size) ||
+        (newPos.x === apple.x / size && newPos.y === apple.y / size)
+      );
+
+      enemy.x = newPos.x * size;
+      enemy.y = newPos.y * size;
+    }
+
+    function placeAppleSafely() {
+      let horseGrid = getGridPos(horse);
+      let enemyGrid = getGridPos(enemy);
+
+      let newPos;
+      let tries = 0;
+
+      do {
+        newPos = randomGridPosition();
+        tries++;
+      } while (
+        (
+          (newPos.x === horseGrid.x && newPos.y === horseGrid.y) ||
+          (newPos.x === enemyGrid.x && newPos.y === enemyGrid.y)
+        ) && tries < 200
+      );
+
+      apple.x = newPos.x * size;
+      apple.y = newPos.y * size;
+    }
+
+    // =========================
+    // PATHFINDING (BFS)
+    // =========================
+    function findPathAvoiding(start, end, blocked) {
+      let open = [start];
+      let cameFrom = {};
+      let visited = new Set();
+
+      let key = (p) => p.x + "," + p.y;
+
+      visited.add(key(start));
+
+      while (open.length > 0) {
+        let current = open.shift();
+
+        if (current.x === end.x && current.y === end.y) {
+          let path = [];
+          let temp = current;
+
+          while (temp) {
+            path.unshift(temp);
+            temp = cameFrom[key(temp)];
+          }
+
+          return path;
+        }
+
+        let neighbors = [
+          { x: current.x + 1, y: current.y },
+          { x: current.x - 1, y: current.y },
+          { x: current.x, y: current.y + 1 },
+          { x: current.x, y: current.y - 1 }
+        ];
+
+        for (let n of neighbors) {
+          if (
+            n.x < 0 ||
+            n.y < 0 ||
+            n.x >= tileCountX ||
+            n.y >= tileCountY
+          ) {
+            continue;
+          }
+
+          if (blocked && n.x === blocked.x && n.y === blocked.y) {
+            continue;
+          }
+
+          if (visited.has(key(n))) continue;
+
+          visited.add(key(n));
+          cameFrom[key(n)] = current;
+          open.push(n);
+        }
+      }
+
+      return []; 
+    }
+
+    // =========================
+    // IA DO INIMIGO (SEMPRE DEIXA CAMINHO PRA MAÇÃ)
+    // =========================
+   
+
+    function moveEnemy() {
+      let nextMove = getSafeEnemyMove();
+
+      if (!nextMove) return;
+
+      enemy.x = nextMove.x * size;
+      enemy.y = nextMove.y * size;
+    }
+
+    // =========================
+    // DESENHO
+    // =========================
+    function drawHorse() {
+      ctx.save();
+
+      ctx.translate(horse.x + size / 2, horse.y + size / 2);
+
+      if (direction === "right") {
+        ctx.drawImage(sprites[frame], -size / 2, -size / 2, size, size);
+      }
+
+      if (direction === "left") {
+        ctx.scale(-1, 1);
+        ctx.drawImage(sprites[frame], -size / 2, -size / 2, size, size);
+      }
+
+      if (direction === "up") {
+        ctx.rotate(-Math.PI / 2);
+        ctx.drawImage(sprites[frame], -size / 2, -size / 2, size, size);
+      }
+
+      if (direction === "down") {
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(sprites[frame], -size / 2, -size / 2, size, size);
+      }
+
+      ctx.restore();
+
+      if (horse.dx !== 0 || horse.dy !== 0) {
+        frameDelay++;
+
+        if (frameDelay > 6) {
+          frame++;
+          frameDelay = 0;
+
+          if (frame >= sprites.length) {
+            frame = 0;
+          }
+        }
+      }
+    }
+
+    function drawApple() {
+      ctx.drawImage(appleImg, apple.x, apple.y, size, size);
+    }
+
+    function drawEnemy() {
+      ctx.fillStyle = "red";
+      ctx.fillRect(enemy.x, enemy.y, size, size);
+    }
+
+    function drawScore() {
+      scoreDisplay.textContent = "Score: " + score;
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = "#eeeeee";
+
+      for (let x = 0; x < canvas.width; x += size) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+
+      for (let y = 0; y < canvas.height; y += size) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "white";
+      ctx.font = "40px Arial";
+      ctx.fillText("O miriri desmaiou", canvas.width / 2 - 150, canvas.height / 2);
+
+      ctx.font = "26px Arial";
+      ctx.fillText("Toque no botão para reiniciar", canvas.width / 2 - 165, canvas.height / 2 + 70);
+
+      drawRestartButton();
+    }
+
+    function drawRestartButton() {
+      ctx.fillStyle = "#4caf50";
+      ctx.fillRect(
+        restartButton.x,
+        restartButton.y,
+        restartButton.width,
+        restartButton.height
+      );
+
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        restartButton.x,
+        restartButton.y,
+        restartButton.width,
+        restartButton.height
+      );
+
+      ctx.fillStyle = "white";
+      ctx.font = "28px Arial";
+      ctx.fillText(
+        "Reiniciar",
+        restartButton.x + 35,
+        restartButton.y + 38
+      );
+    }
+
+    // =========================
+    // JOGO
+    // =========================
+    function moveMiriri() {
+      horse.x += horse.dx;
+      horse.y += horse.dy;
+
+      if (
+        horse.x < 0 ||
+        horse.y < 0 ||
+        horse.x >= tileCountX * size ||
+        horse.y >= tileCountY * size
+      ) {
+        gameOver = true;
+      }
+    }
+
+    function checkApple() {
+      if (horse.x === apple.x && horse.y === apple.y) {
+        score++;
+        placeAppleSafely();
+      }
+    }
+
+    function isInsideRestartButton(x, y) {
+      return (
+        x >= restartButton.x &&
+        x <= restartButton.x + restartButton.width &&
+        y >= restartButton.y &&
+        y <= restartButton.y + restartButton.height
+      );
+    }
+
+    function resetGame() {
+      horse.x = 5 * size;
+      horse.y = 5 * size;
+      horse.dx = 0;
+      horse.dy = 0;
+
+      apple.x = 2 * size;
+      apple.y = 2 * size;
+
+      placeEnemySafely();
+
+      score = 0;
+      gameOver = false;
+      direction = "right";
+      frame = 0;
+      frameDelay = 0;
+    }
+
+    function drawAll() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (gameOver) {
+        drawGameOver();
+      } else {
+        drawGrid();
+        drawApple();
+        drawHorse();
+        drawEnemy();
+        drawScore();
+      }
+    }
+
+    function gameLoop() {
+      drawAll();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // =========================
+    // CONTROLES
+    // =========================
+    function moveUp() {
+      horse.dx = 0;
+      horse.dy = -size;
+      direction = "up";
+    }
+
+    function moveDown() {
+      horse.dx = 0;
+      horse.dy = size;
+      direction = "down";
+    }
+
+    function moveLeft() {
+      horse.dx = -size;
+      horse.dy = 0;
+      direction = "left";
+    }
+
+    function moveRight() {
+      horse.dx = size;
+      horse.dy = 0;
+      direction = "right";
+    }
+
+    // TECLADO
+    document.addEventListener("keydown", e => {
+      if (e.repeat) return;
+
+      if (gameOver && (e.key === "r" || e.key === "R")) {
+        resetGame();
+        return;
+      }
+
+      if (!gameOver) {
+        if (e.key === "w" || e.key === "W") {
+          moveUp();
+        }
+
+        if (e.key === "s" || e.key === "S") {
+          moveDown();
+        }
+
+        if (e.key === "a" || e.key === "A") {
+          moveLeft();
+        }
+
+        if (e.key === "d" || e.key === "D") {
+          moveRight();
+        }
+      }
+    });
+
+    // TOUCH
+    canvas.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      const touchX = (touch.clientX - rect.left) * scaleX;
+      const touchY = (touch.clientY - rect.top) * scaleY;
+
+      if (gameOver) {
+        if (isInsideRestartButton(touchX, touchY)) {
+          resetGame();
+        }
+        return;
+      }
+
+      const centerX = horse.x + size / 2;
+      const centerY = horse.y + size / 2;
+
+      const dx = touchX - centerX;
+      const dy = touchY - centerY;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) {
+          moveRight();
+        } else {
+          moveLeft();
+        }
+      } else {
+        if (dy > 0) {
+          moveDown();
+        } else {
+          moveUp();
+        }
+      }
+    });
+
+    // CLICK PARA REINICIAR
+    canvas.addEventListener("click", function (e) {
+      if (!gameOver) return;
+
+      const rect = canvas.getBoundingClientRect();
+
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+
+      const clickX = (e.clientX - rect.left) * scaleX;
+      const clickY = (e.clientY - rect.top) * scaleY;
+
+      if (isInsideRestartButton(clickX, clickY)) {
+        resetGame();
+      }
+    });
+
+    // =========================
+    // LOOP LÓGICO DO JOGO
+    // =========================
+    setInterval(() => {
+      if (!gameOver) {
+        moveMiriri();
+        checkApple();
+        moveEnemy();
+
+        // colisão com inimigo
+        if (enemy.x === horse.x && enemy.y === horse.y) {
+          gameOver = true;
+        }
+      }
+    }, 200);
+
+    // posiciona inimigo inicial de forma segura
+    placeEnemySafely();
+
+    gameLoop();
+  </script>
+
+</body>
+
+</html>
