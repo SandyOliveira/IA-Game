@@ -90,6 +90,9 @@
     const appleImg = new Image();
     appleImg.src = "assets/maza3.png";
 
+    const enemyImg = new Image()
+    enemyImg.src = "assets/trump.png"
+
     // =========================
     // FUNÇÕES DE POSIÇÃO
     // =========================
@@ -205,13 +208,33 @@
         }
       }
 
-      return []; 
+      return [];
     }
 
     // =========================
     // IA DO INIMIGO (SEMPRE DEIXA CAMINHO PRA MAÇÃ)
     // =========================
-   
+    function getSafeEnemyMove() {
+      let enemyGrid = getGridPos(enemy);
+      let horseGrid = getGridPos(horse);
+      let appleGrid = getGridPos(apple);
+
+      let moves = [
+        { x: enemyGrid.x + 1, y: enemyGrid.y },
+        { x: enemyGrid.x - 1, y: enemyGrid.y },
+        { x: enemyGrid.x, y: enemyGrid.y + 1 },
+        { x: enemyGrid.x, y: enemyGrid.y - 1 }
+      ];
+
+      let validMoves = moves.filter(m =>
+        m.x >= 0 &&
+        m.y >= 0 &&
+        m.x < tileCountX &&
+        m.y < tileCountY
+      );
+
+     
+    }
 
     function moveEnemy() {
       let nextMove = getSafeEnemyMove();
@@ -270,8 +293,7 @@
     }
 
     function drawEnemy() {
-      ctx.fillStyle = "red";
-      ctx.fillRect(enemy.x, enemy.y, size, size);
+      ctx.drawImage(enemyImg, enemy.x, enemy.y, size, size)
     }
 
     function drawScore() {
